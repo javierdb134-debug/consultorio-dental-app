@@ -1,10 +1,10 @@
 {
-  "name": "Consultorio Dental",
-  "short_name": "Consultorio",
+  "name": "Consultorio Mis Angeles",
+  "short_name": "Mis Angeles",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f2f6f6",
-  "theme_color": "#1e9d8b",
+  "background_color": "#fdf5fb",
+  "theme_color": "#c2298f",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }

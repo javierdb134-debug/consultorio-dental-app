@@ -1,11 +1,11 @@
 :root {
-  --bg: #f2f6f6;
+  --bg: #fdf5fb;
   --surface: #ffffff;
-  --border: #dbe6e6;
-  --text: #1f2d2b;
-  --text-dim: #5f7370;
-  --accent: #1e9d8b;
-  --accent-dark: #157567;
+  --border: #f0d6ec;
+  --text: #2d1b33;
+  --text-dim: #8a6b8f;
+  --accent: #c2298f;
+  --accent-dark: #7a1a8c;
   --danger: #d9534f;
   --danger-bg: #fdecea;
   --warning: #b8860b;
@@ -81,7 +81,8 @@ input, select {
   text-align: center;
 }
 
-.login-card h1 { margin: 0 0 0.2rem; color: var(--accent-dark); }
+.login-logo { display: block; max-width: 240px; max-height: 140px; margin: 0 auto 0.8rem; object-fit: contain; }
+.login-card h1 { margin: 0 0 0.2rem; color: var(--accent-dark); font-size: 1.3rem; }
 .subtitle { color: var(--text-dim); margin-top: 0; margin-bottom: 1.2rem; }
 
 .tabs {
@@ -136,7 +137,8 @@ input, select {
   flex-wrap: wrap;
 }
 
-.brand { font-weight: 700; color: var(--accent-dark); font-size: 1.1rem; }
+.brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: var(--accent-dark); font-size: 1.1rem; }
+.brand-logo { height: 36px; width: auto; object-fit: contain; }
 
 .app-nav { display: flex; gap: 0.5rem; flex: 1; }
 .nav-btn {
@@ -260,7 +262,7 @@ tr.row-expiring td:nth-child(5) { color: var(--warning); font-weight: 700; }
 }
 
 .tag-info {
-  background: #e5f3f1;
+  background: #fbe6f4;
   color: var(--accent-dark);
 }
 
