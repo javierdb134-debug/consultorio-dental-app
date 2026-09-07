@@ -1,0 +1,7 @@
+*.db
+secret_key.txt
+__pycache__/
+*.pyc
+.venv/
+venv/
+.claude/settings.local.json

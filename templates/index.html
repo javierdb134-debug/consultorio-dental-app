@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consultorio Dental</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1e9d8b">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Consultorio">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<div id="login-screen" class="screen">
+  <div class="login-card">
+    <h1 id="login-clinic-name">Mi Consultorio</h1>
+    <p class="subtitle">Inicia sesion para continuar</p>
+
+    <div class="tabs">
+      <button type="button" class="tab-btn active" data-tab="doctora">Doctora</button>
+      <button type="button" class="tab-btn" data-tab="asistente">Asistente</button>
+    </div>
+
+    <form id="form-login-doctora" class="login-form">
+      <label>Usuario
+        <input type="text" name="username" autocomplete="username" required>
+      </label>
+      <label>Contrasena
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button type="submit">Entrar</button>
+    </form>
+
+    <form id="form-login-asistente" class="login-form hidden">
+      <label>Nombre
+        <select name="name" id="select-asistente-name" required></select>
+      </label>
+      <label>PIN
+        <input type="password" name="pin" inputmode="numeric" autocomplete="off" required>
+      </label>
+      <button type="submit">Entrar</button>
+    </form>
+
+    <p id="login-error" class="error-text hidden"></p>
+  </div>
+</div>
+
+<div id="app-screen" class="screen hidden">
+  <header class="app-header">
+    <div class="brand">
+      <span id="app-clinic-name">Mi Consultorio</span>
+    </div>
+    <nav id="app-nav" class="app-nav">
+      <button type="button" class="nav-btn active" data-view="pacientes">Pacientes</button>
+      <button type="button" class="nav-btn" data-view="citas">Citas</button>
+      <button type="button" class="nav-btn" data-view="insumos">Insumos</button>
+      <button type="button" class="nav-btn" data-view="settings" id="nav-settings">Configuracion</button>
+    </nav>
+    <div class="user-box">
+      <span id="user-name"></span>
+      <button type="button" id="btn-logout">Salir</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="view-pacientes" class="view">
+      <div class="view-header">
+        <h2>Pacientes</h2>
+        <button type="button" id="btn-new-paciente" class="btn-primary">+ Nuevo paciente</button>
+      </div>
+
+      <div class="filters">
+        <input type="search" id="filter-pacientes" placeholder="Buscar por nombre o telefono...">
+      </div>
+
+      <div class="table-wrap">
+        <table id="table-pacientes">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Telefono</th>
+              <th>Alergias</th>
+              <th>Proxima revision</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="pacientes-tbody"></tbody>
+        </table>
+        <p id="pacientes-empty" class="empty-text hidden">No hay pacientes registrados todavia.</p>
+      </div>
+    </section>
+
+    <section id="view-citas" class="view hidden">
+      <div class="view-header">
+        <h2>Citas</h2>
+        <button type="button" id="btn-new-cita" class="btn-primary">+ Nueva cita</button>
+      </div>
+
+      <div class="filters">
+        <label class="date-nav-label">
+          <button type="button" id="btn-cita-prev-day" class="btn-secondary">&larr;</button>
+          <input type="date" id="filter-citas-fecha">
+          <button type="button" id="btn-cita-next-day" class="btn-secondary">&rarr;</button>
+        </label>
+        <button type="button" id="btn-cita-hoy" class="btn-secondary">Hoy</button>
+      </div>
+
+      <div class="table-wrap">
+        <table id="table-citas">
+          <thead>
+            <tr>
+              <th>Hora</th>
+              <th>Paciente</th>
+              <th>Tratamiento</th>
+              <th>Duracion</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="citas-tbody"></tbody>
+        </table>
+        <p id="citas-empty" class="empty-text hidden">No hay citas agendadas para este dia.</p>
+      </div>
+    </section>
+
+    <section id="view-insumos" class="view hidden">
+      <div class="view-header">
+        <h2>Insumos</h2>
+        <button type="button" id="btn-new-insumo" class="btn-primary">+ Nuevo insumo</button>
+      </div>
+
+      <div class="filters">
+        <input type="search" id="filter-insumos" placeholder="Buscar por nombre o categoria...">
+        <label class="checkbox-label">
+          <input type="checkbox" id="filter-alertas">
+          Solo alertas (stock bajo / por caducar)
+        </label>
+      </div>
+
+      <div class="table-wrap">
+        <table id="table-insumos">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Categoria</th>
+              <th>Stock</th>
+              <th>Minimo</th>
+              <th>Caducidad</th>
+              <th class="doctora-only">Costo</th>
+              <th class="doctora-only">Precio</th>
+              <th>Proveedor</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="insumos-tbody"></tbody>
+        </table>
+        <p id="insumos-empty" class="empty-text hidden">No hay insumos registrados todavia.</p>
+      </div>
+    </section>
+
+    <section id="view-settings" class="view hidden">
+      <div class="view-header">
+        <h2>Configuracion</h2>
+      </div>
+
+      <div class="card">
+        <h3>Datos del consultorio</h3>
+        <form id="form-clinic-name" class="inline-form">
+          <label>Nombre del consultorio
+            <input type="text" id="input-clinic-name" required>
+          </label>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Mi contrasena</h3>
+        <form id="form-change-password" class="inline-form">
+          <label>Contrasena actual
+            <input type="password" name="actual" autocomplete="current-password" required>
+          </label>
+          <label>Nueva contrasena (min. 8 caracteres)
+            <input type="password" name="nueva" autocomplete="new-password" required minlength="8">
+          </label>
+          <button type="submit" class="btn-primary">Cambiar contrasena</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Asistentes</h3>
+        <div class="table-wrap">
+          <table id="table-asistentes">
+            <thead>
+              <tr><th>Nombre</th><th>Activo</th><th>Acciones</th></tr>
+            </thead>
+            <tbody id="asistentes-tbody"></tbody>
+          </table>
+        </div>
+        <form id="form-new-asistente" class="inline-form">
+          <label>Nombre
+            <input type="text" name="name" required>
+          </label>
+          <label>PIN (4+ digitos)
+            <input type="password" name="pin" inputmode="numeric" required>
+          </label>
+          <button type="submit" class="btn-primary">Agregar asistente</button>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
