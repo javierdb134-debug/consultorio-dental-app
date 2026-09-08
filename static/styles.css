@@ -286,27 +286,37 @@ tr.row-expiring td:nth-child(5) { color: var(--warning); font-weight: 700; }
 
 .odontograma-row {
   display: flex;
-  gap: 0.3rem;
+  gap: 0.15rem;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
 }
 
 .tooth-btn {
-  width: 34px;
-  height: 34px;
-  border: 2px solid var(--border);
+  width: 32px;
+  border: none;
   border-radius: 6px;
-  background: var(--surface);
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--text-dim);
-  padding: 0;
+  background: transparent;
+  padding: 3px 1px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
 }
 
-.tooth-btn.selected { outline: 2px solid var(--accent-dark); outline-offset: 1px; }
-.tooth-btn.estado-tratado { background: #dbeeff; border-color: #7fb3e8; color: #1c5fa8; }
-.tooth-btn.estado-a_tratar { background: var(--warning-bg); border-color: #e0b23f; color: var(--warning); }
-.tooth-btn.estado-ausente { background: #e8e8e8; border-color: #b8b8b8; color: #888; text-decoration: line-through; }
+.tooth-btn:hover { background: var(--bg); }
+.tooth-btn.selected { outline: 2px solid var(--accent-dark); outline-offset: 1px; background: var(--bg); }
+
+.tooth-svg { width: 24px; height: 32px; }
+.tooth-svg.tooth-flipped { transform: rotate(180deg); }
+
+.tooth-path { stroke-width: 1.3; }
+.tooth-path.estado-sano { fill: #ffffff; stroke: var(--border); }
+.tooth-path.estado-tratado { fill: #a9d2f5; stroke: #4a86b4; }
+.tooth-path.estado-a_tratar { fill: #f7cb52; stroke: var(--warning); }
+.tooth-path.estado-ausente { fill: #e9e9e9; stroke: #b8b8b8; stroke-dasharray: 2 1.5; opacity: 0.65; }
+
+.tooth-label { font-size: 0.62rem; font-weight: 700; color: var(--text-dim); margin-top: 1px; }
 
 .tooth-panel {
   border: 1px solid var(--border);

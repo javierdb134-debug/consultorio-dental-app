@@ -33,6 +33,13 @@ const CATEGORIA_SUGERIDAS = [
   "Algodon y gasas", "Desinfeccion", "Endodoncia", "Ortodoncia", "Otro",
 ];
 
+const TOOTH_PATH = "M12 1C6 1 3 5 3 10c0 4 2 6 3 8 1 3 1 8 2 11 1 2 3 2 4 0 1-3 1-8 2-11 1-2 3-4 3-8 0-5-3-9-9-9z";
+
+function toothIconHtml(estado, flipped) {
+  const flipClass = flipped ? " tooth-flipped" : "";
+  return `<svg viewBox="0 0 24 32" class="tooth-svg${flipClass}"><path d="${TOOTH_PATH}" class="tooth-path estado-${estado}"></path></svg>`;
+}
+
 const FDI_ROWS = [
   ["18", "17", "16", "15", "14", "13", "12", "11", "21", "22", "23", "24", "25", "26", "27", "28"],
   ["48", "47", "46", "45", "44", "43", "42", "41", "31", "32", "33", "34", "35", "36", "37", "38"],
@@ -319,17 +326,17 @@ async function openPacienteDetail(patientId) {
   container.appendChild(el("h3", { text: "Odontograma" }));
   const odontograma = el("div", { class: "odontograma" });
   const panelHolder = el("div", {});
-  FDI_ROWS.forEach((row) => {
+  FDI_ROWS.forEach((row, rowIndex) => {
     const rowEl = el("div", { class: "odontograma-row" });
     row.forEach((tooth) => {
       const info = data.dientes[tooth] || { estado: "sano", nota: null };
       const btn = el("button", {
         type: "button",
-        class: `tooth-btn estado-${info.estado}`,
-        text: tooth,
+        class: "tooth-btn",
         onclick: () => renderToothPanel(panelHolder, patientId, tooth, info, odontograma),
       });
       btn.dataset.tooth = tooth;
+      btn.innerHTML = toothIconHtml(info.estado, rowIndex === 0) + `<span class="tooth-label">${tooth}</span>`;
       rowEl.appendChild(btn);
     });
     odontograma.appendChild(rowEl);
@@ -485,7 +492,9 @@ function renderToothPanel(panelHolder, patientId, tooth, info, odontograma) {
         info.estado = estadoActual;
         info.nota = notaInput.value;
         const btnEl = odontograma.querySelector(`[data-tooth="${tooth}"]`);
-        btnEl.className = `tooth-btn selected estado-${estadoActual}`;
+        const isUpper = FDI_ROWS[0].includes(tooth);
+        btnEl.innerHTML = toothIconHtml(estadoActual, isUpper) + `<span class="tooth-label">${tooth}</span>`;
+        btnEl.className = "tooth-btn selected";
       } catch (err) {
         alert(err.message);
       }
