@@ -66,6 +66,18 @@ CREATE TABLE IF NOT EXISTS patient_teeth (
     PRIMARY KEY (patient_id, tooth)
 );
 
+-- Fotos y radiografias adjuntas al expediente. Los archivos en si viven en
+-- disco (carpeta UPLOADS_DIR), nunca en git ni en este archivo.
+CREATE TABLE IF NOT EXISTS patient_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_id INTEGER NOT NULL REFERENCES patients(id),
+    filename TEXT NOT NULL,
+    stored_name TEXT NOT NULL,
+    mime_type TEXT,
+    uploaded_by TEXT,
+    uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS appointments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_id INTEGER REFERENCES patients(id),

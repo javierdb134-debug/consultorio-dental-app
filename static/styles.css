@@ -378,3 +378,42 @@ tr.row-expiring td:nth-child(5) { color: var(--warning); font-weight: 700; }
 
 .plain-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.88rem; }
 .plain-list li { border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+
+/* ---------- Adjuntos (fotos / radiografias) ---------- */
+
+.attachments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.8rem;
+  margin: 0.8rem 0;
+}
+
+.attachment-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  text-align: center;
+  font-size: 0.78rem;
+}
+
+.attachment-thumb {
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #fafcfc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.attachment-name {
+  margin-top: 0.4rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-card .btn-danger { margin-top: 0.4rem; width: 100%; }

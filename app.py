@@ -1,16 +1,26 @@
 import os
 import secrets
 import sqlite3
+import uuid
 from datetime import date, datetime, timedelta
 from functools import wraps
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, render_template, request, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("DB_PATH", BASE_DIR / "consultorio.db"))
 SECRET_KEY_FILE = BASE_DIR / "secret_key.txt"
+UPLOADS_DIR = Path(os.environ.get("UPLOADS_DIR", BASE_DIR / "uploads"))
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+ALLOWED_ATTACHMENT_TYPES = {
+    "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "application/pdf": ".pdf",
+}
+MAX_ATTACHMENT_BYTES = 6 * 1024 * 1024
+MAX_IMAGE_DIMENSION = 1600
 
 INSUMO_FIELDS = [
     "nombre", "categoria", "unidad_medida", "stock", "stock_minimo",
@@ -46,6 +56,7 @@ def get_secret_key():
 app = Flask(__name__)
 app.secret_key = get_secret_key()
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=90)
+app.config["MAX_CONTENT_LENGTH"] = MAX_ATTACHMENT_BYTES
 
 
 def get_db():
@@ -82,6 +93,12 @@ def init_db():
 
 
 init_db()
+
+
+@app.errorhandler(413)
+def too_large(_e):
+    mb = MAX_ATTACHMENT_BYTES // (1024 * 1024)
+    return jsonify({"error": f"El archivo es demasiado grande (maximo {mb} MB)"}), 413
 
 
 def login_required(*roles):
@@ -702,6 +719,110 @@ def update_diente(patient_id, tooth):
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "tooth": tooth, "estado": estado, "nota": body.get("nota")})
+
+
+# ---------------------------------------------------------------------------
+# Fotos y radiografias del expediente
+# ---------------------------------------------------------------------------
+
+def save_and_resize_image(file_storage, dest_path):
+    """Guarda una imagen redimensionada (max MAX_IMAGE_DIMENSION por lado) para
+    no llenar el disco del hosting. Los PDF se guardan tal cual."""
+    from PIL import Image
+
+    img = Image.open(file_storage.stream)
+    img = img.convert("RGB") if img.mode not in ("RGB", "L") else img
+    img.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION))
+    img.save(dest_path, quality=85, optimize=True)
+
+
+@app.route("/api/pacientes/<int:patient_id>/adjuntos", methods=["GET"])
+@login_required("doctora", "asistente")
+def list_adjuntos(patient_id):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM patient_attachments WHERE patient_id = ? ORDER BY uploaded_at DESC", (patient_id,)
+    ).fetchall()
+    conn.close()
+    return jsonify([
+        {
+            "id": r["id"], "filename": r["filename"], "mime_type": r["mime_type"],
+            "uploaded_by": r["uploaded_by"], "uploaded_at": r["uploaded_at"],
+        }
+        for r in rows
+    ])
+
+
+@app.route("/api/pacientes/<int:patient_id>/adjuntos", methods=["POST"])
+@login_required("doctora", "asistente")
+def upload_adjunto(patient_id):
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return jsonify({"error": "No se recibio ningun archivo"}), 400
+
+    mime_type = file.mimetype
+    ext = ALLOWED_ATTACHMENT_TYPES.get(mime_type)
+    if not ext:
+        return jsonify({"error": "Solo se permiten imagenes (JPG, PNG, WEBP) o PDF"}), 400
+
+    conn = get_db()
+    paciente = conn.execute("SELECT id FROM patients WHERE id = ?", (patient_id,)).fetchone()
+    if not paciente:
+        conn.close()
+        return jsonify({"error": "Paciente no encontrado"}), 404
+
+    patient_dir = UPLOADS_DIR / str(patient_id)
+    patient_dir.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{uuid.uuid4().hex}{ext}"
+    dest_path = patient_dir / stored_name
+
+    if mime_type == "application/pdf":
+        file.save(dest_path)
+    else:
+        try:
+            save_and_resize_image(file, dest_path)
+        except Exception:
+            conn.close()
+            return jsonify({"error": "El archivo de imagen no se pudo procesar"}), 400
+
+    safe_filename = secure_filename(file.filename) or "archivo"
+    conn.execute(
+        """INSERT INTO patient_attachments (patient_id, filename, stored_name, mime_type, uploaded_by)
+           VALUES (?, ?, ?, ?, ?)""",
+        (patient_id, safe_filename, stored_name, mime_type, session.get("name")),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 201
+
+
+@app.route("/api/adjuntos/<int:adjunto_id>/archivo")
+@login_required("doctora", "asistente")
+def descargar_adjunto(adjunto_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM patient_attachments WHERE id = ?", (adjunto_id,)).fetchone()
+    conn.close()
+    if not row:
+        abort(404)
+    patient_dir = UPLOADS_DIR / str(row["patient_id"])
+    return send_from_directory(patient_dir, row["stored_name"], mimetype=row["mime_type"])
+
+
+@app.route("/api/adjuntos/<int:adjunto_id>", methods=["DELETE"])
+@login_required("doctora")
+def delete_adjunto(adjunto_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM patient_attachments WHERE id = ?", (adjunto_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Adjunto no encontrado"}), 404
+    conn.execute("DELETE FROM patient_attachments WHERE id = ?", (adjunto_id,))
+    conn.commit()
+    conn.close()
+
+    file_path = UPLOADS_DIR / str(row["patient_id"]) / row["stored_name"]
+    file_path.unlink(missing_ok=True)
+    return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------

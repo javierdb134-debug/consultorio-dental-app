@@ -1,5 +1,6 @@
 *.db
 secret_key.txt
+uploads/
 __pycache__/
 *.pyc
 .venv/

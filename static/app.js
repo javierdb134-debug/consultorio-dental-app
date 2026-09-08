@@ -337,6 +337,39 @@ async function openPacienteDetail(patientId) {
   container.appendChild(odontograma);
   container.appendChild(panelHolder);
 
+  container.appendChild(el("h3", { text: "Fotos y radiografias" }));
+  const attachmentsGrid = el("div", { class: "attachments-grid" });
+  container.appendChild(attachmentsGrid);
+  await renderAdjuntos(patientId, attachmentsGrid);
+
+  const uploadForm = el("form", { class: "inline-form" }, [
+    el("label", {}, [
+      document.createTextNode("Subir imagen o PDF (max 6 MB)"),
+      el("input", { type: "file", name: "file", accept: "image/jpeg,image/png,image/webp,application/pdf" }),
+    ]),
+    el("button", { type: "submit", class: "btn-primary", text: "Subir" }),
+  ]);
+  uploadForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fileInput = uploadForm.querySelector('input[type="file"]');
+    const file = fileInput.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch(`/api/pacientes/${patientId}/adjuntos`, {
+        method: "POST", body: formData, credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && data.error) || "No se pudo subir el archivo");
+      fileInput.value = "";
+      await renderAdjuntos(patientId, attachmentsGrid);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  container.appendChild(uploadForm);
+
   container.appendChild(el("h3", { text: "Historial / notas clinicas" }));
   const notesList = el("div", { class: "notes-list" });
   if (data.notas.length === 0) {
@@ -371,6 +404,46 @@ async function openPacienteDetail(patientId) {
   container.appendChild(noteForm);
 
   openModal(container);
+}
+
+async function renderAdjuntos(patientId, container) {
+  const adjuntos = await api(`/api/pacientes/${patientId}/adjuntos`);
+  container.innerHTML = "";
+
+  if (adjuntos.length === 0) {
+    container.appendChild(el("p", { class: "empty-text", text: "Sin fotos ni radiografias todavia." }));
+    return;
+  }
+
+  adjuntos.forEach((a) => {
+    const isImage = a.mime_type && a.mime_type.startsWith("image/");
+    const fileUrl = `/api/adjuntos/${a.id}/archivo`;
+
+    const preview = isImage
+      ? el("img", { src: fileUrl, alt: a.filename, class: "attachment-thumb" })
+      : el("div", { class: "attachment-thumb attachment-pdf", text: "PDF" });
+
+    const link = el("a", { href: fileUrl, target: "_blank", rel: "noopener" }, [preview]);
+
+    const card = el("div", { class: "attachment-card" }, [
+      link,
+      el("div", { class: "attachment-name", text: a.filename }),
+      el("div", { class: "note-meta", text: a.uploaded_at.slice(0, 10) }),
+    ]);
+
+    if (state.role === "doctora") {
+      card.appendChild(el("button", {
+        class: "btn-danger", text: "Eliminar",
+        onclick: async () => {
+          if (!confirm(`Eliminar "${a.filename}"?`)) return;
+          await api(`/api/adjuntos/${a.id}`, { method: "DELETE" });
+          await renderAdjuntos(patientId, container);
+        },
+      }));
+    }
+
+    container.appendChild(card);
+  });
 }
 
 function renderToothPanel(panelHolder, patientId, tooth, info, odontograma) {
