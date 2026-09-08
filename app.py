@@ -1499,6 +1499,34 @@ def reportes():
            ORDER BY appointments.fecha_hora LIMIT 20""",
     ).fetchall()
 
+    tendencia_rows = conn.execute(
+        """SELECT strftime('%Y-%m', fecha) AS mes,
+                  SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE 0 END) AS ingresos,
+                  SUM(CASE WHEN tipo = 'egreso' THEN monto ELSE 0 END) AS egresos
+           FROM (
+               SELECT fecha, monto, 'ingreso' AS tipo FROM payments
+               UNION ALL
+               SELECT fecha, monto, 'ingreso' AS tipo FROM other_incomes
+               UNION ALL
+               SELECT fecha, monto, 'egreso' AS tipo FROM expenses
+               UNION ALL
+               SELECT fecha, monto, 'egreso' AS tipo FROM payroll
+           )
+           WHERE fecha >= date(?, '-5 months', 'start of month')
+           GROUP BY mes""",
+        (hoy,),
+    ).fetchall()
+    tendencia_por_mes = {r["mes"]: {"ingresos": r["ingresos"], "egresos": r["egresos"]} for r in tendencia_rows}
+    tendencia_mensual = []
+    cursor_mes = datetime.strptime(hoy, "%Y-%m-%d").replace(day=1)
+    meses_ordenados = []
+    for _ in range(6):
+        meses_ordenados.append(cursor_mes.strftime("%Y-%m"))
+        cursor_mes = (cursor_mes - timedelta(days=1)).replace(day=1)
+    for mes in reversed(meses_ordenados):
+        datos = tendencia_por_mes.get(mes, {"ingresos": 0, "egresos": 0})
+        tendencia_mensual.append({"mes": mes, "ingresos": round(datos["ingresos"], 2), "egresos": round(datos["egresos"], 2)})
+
     conn.close()
 
     return jsonify({
@@ -1515,6 +1543,7 @@ def reportes():
         "insumos_por_vencer": [dict(r) for r in por_vencer],
         "proximas_citas": [dict(r) for r in proximas_citas],
         "solicitudes_pendientes": [dict(r) for r in solicitudes_pendientes],
+        "tendencia_mensual": tendencia_mensual,
     })
 
 

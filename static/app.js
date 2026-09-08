@@ -1051,6 +1051,94 @@ async function loadReporte() {
       text: `${s.fecha_hora.replace("T", " ")} - ${s.patient_nombre || "-"} (${s.patient_telefono || "-"})`,
     }));
   });
+
+  document.getElementById("grafica-tendencia").innerHTML = buildChartTendencia(data.tendencia_mensual);
+  document.getElementById("grafica-insumos").innerHTML = buildChartInsumos(data.insumos_mas_consumidos);
+}
+
+const CHART_COLORS = { ingresos: "#2a78d6", egresos: "#eb6834", insumos: "#c2298f" };
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function roundedTopBarPath(x, y, w, h, r) {
+  if (h <= 0) return `M${x},${y} L${x + w},${y} Z`;
+  r = Math.min(r, w / 2, h);
+  return `M${x},${y + h} L${x},${y + r} Q${x},${y} ${x + r},${y} `
+    + `L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${y + h} Z`;
+}
+
+function roundedRightBarPath(x, y, w, h, r) {
+  if (w <= 0) return `M${x},${y} L${x},${y + h} Z`;
+  r = Math.min(r, w, h / 2);
+  return `M${x},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} `
+    + `L${x + w},${y + h - r} Q${x + w},${y + h} ${x + w - r},${y + h} L${x},${y + h} Z`;
+}
+
+function buildChartTendencia(datos) {
+  const width = 480, height = 230;
+  const padding = { top: 16, right: 12, bottom: 26, left: 40 };
+  const chartW = width - padding.left - padding.right;
+  const chartH = height - padding.top - padding.bottom;
+  const maxVal = Math.max(1, ...datos.flatMap((d) => [d.ingresos, d.egresos]));
+  const groupW = chartW / datos.length;
+  const barW = Math.min(24, groupW / 2 - 6);
+
+  let gridlines = "";
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + chartH - (chartH * i) / 4;
+    gridlines += `<line x1="${padding.left}" y1="${y.toFixed(1)}" x2="${width - padding.right}" y2="${y.toFixed(1)}" class="chart-gridline" />`;
+  }
+
+  let bars = "";
+  datos.forEach((d, i) => {
+    const groupX = padding.left + i * groupW;
+    [["ingresos", d.ingresos], ["egresos", d.egresos]].forEach(([key, val], j) => {
+      const barH = (val / maxVal) * chartH;
+      const x = groupX + groupW / 2 - barW - 2 + j * (barW + 4);
+      const y = padding.top + chartH - barH;
+      const label = key === "ingresos" ? "Ingresos" : "Egresos";
+      bars += `<path d="${roundedTopBarPath(x, y, barW, barH, 4)}" class="chart-bar chart-bar-${key}">`
+        + `<title>${label} ${d.mes}: ${formatMoney(val)}</title></path>`;
+    });
+    const [anio, mes] = d.mes.split("-");
+    bars += `<text x="${(groupX + groupW / 2).toFixed(1)}" y="${height - 8}" text-anchor="middle" class="chart-axis-label">${mes}/${anio.slice(2)}</text>`;
+  });
+
+  return `<svg viewBox="0 0 ${width} ${height}" class="chart-svg">${gridlines}${bars}</svg>`
+    + `<div class="chart-legend">`
+    + `<span class="legend-item"><span class="legend-swatch" style="background:${CHART_COLORS.ingresos}"></span>Ingresos</span>`
+    + `<span class="legend-item"><span class="legend-swatch" style="background:${CHART_COLORS.egresos}"></span>Egresos</span>`
+    + `</div>`;
+}
+
+function buildChartInsumos(datos) {
+  if (!datos.length) {
+    return `<p class="empty-text">Sin consumo de insumos en este periodo.</p>`;
+  }
+  const width = 480;
+  const rowH = 32;
+  const padding = { left: 100, right: 46, top: 8, bottom: 8 };
+  const height = padding.top + padding.bottom + datos.length * rowH;
+  const chartW = width - padding.left - padding.right;
+  const maxVal = Math.max(1, ...datos.map((d) => d.cantidad_total));
+  const barH = 16;
+
+  let bars = "";
+  datos.forEach((d, i) => {
+    const y = padding.top + i * rowH;
+    const barW = (d.cantidad_total / maxVal) * chartW;
+    const nombreCorto = d.nombre.length > 16 ? `${d.nombre.slice(0, 15)}…` : d.nombre;
+    bars += `<text x="${padding.left - 8}" y="${(y + barH / 2 + 4).toFixed(1)}" text-anchor="end" class="chart-axis-label">${escapeHtml(nombreCorto)}</text>`;
+    bars += `<path d="${roundedRightBarPath(padding.left, y, barW, barH, 4)}" class="chart-bar chart-bar-insumos">`
+      + `<title>${escapeHtml(d.nombre)}: ${d.cantidad_total}</title></path>`;
+    bars += `<text x="${(padding.left + barW + 6).toFixed(1)}" y="${(y + barH / 2 + 4).toFixed(1)}" class="chart-value-label">${d.cantidad_total}</text>`;
+  });
+
+  return `<svg viewBox="0 0 ${width} ${height}" class="chart-svg">${bars}</svg>`;
 }
 
 function renderFinancieroTabla(tbodyId, rows, columns, deletePath, onDeleted) {

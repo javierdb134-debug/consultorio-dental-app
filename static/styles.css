@@ -370,6 +370,23 @@ tr.row-expiring td:nth-child(5) { color: var(--warning); font-weight: 700; }
 .plain-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.88rem; }
 .plain-list li { border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
 
+/* ---------- Graficas ---------- */
+
+.chart-wrap { margin-top: 0.6rem; }
+.chart-svg { width: 100%; height: auto; display: block; }
+
+.chart-gridline { stroke: #e5e2e0; stroke-width: 1; }
+.chart-axis-label { font-size: 10px; fill: var(--text-dim); }
+.chart-value-label { font-size: 10px; fill: var(--text); font-weight: 600; }
+
+.chart-bar-ingresos { fill: #2a78d6; }
+.chart-bar-egresos { fill: #eb6834; }
+.chart-bar-insumos { fill: var(--accent); }
+
+.chart-legend { display: flex; gap: 1.2rem; margin-top: 0.6rem; font-size: 0.8rem; color: var(--text-dim); }
+.legend-item { display: flex; align-items: center; gap: 0.4rem; }
+.legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
 /* ---------- Adjuntos (fotos / radiografias) ---------- */
 
 .attachments-grid {
