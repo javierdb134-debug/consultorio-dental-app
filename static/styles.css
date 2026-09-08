@@ -331,4 +331,19 @@ tr.row-expiring td:nth-child(5) { color: var(--warning); font-weight: 700; }
   padding: 0.4rem 0.7rem;
   background: #fafcfc;
 }
-.note-item .note-meta { font-size: 0.75rem; color: var(--text-dim); }
+.note-item .note-meta { font-size: 0.75rem; color: var(--text-dim); display: flex; align-items: center; gap: 0.5rem; }
+
+/* ---------- Insumos usados en una consulta ---------- */
+
+.items-container { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem; }
+
+.item-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+@media (max-width: 560px) {
+  .item-row { grid-template-columns: 1fr; }
+}

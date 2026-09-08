@@ -5,6 +5,7 @@ const state = {
   pacientes: [],
   citas: [],
   citaFecha: null,
+  consultas: [],
 };
 
 function dateToStr(d) {
@@ -45,6 +46,11 @@ const ESTADO_CITA_LABEL = {
   agendada: "Agendada", confirmada: "Confirmada", completada: "Completada",
   cancelada: "Cancelada", no_asistio: "No asistio",
 };
+
+const TRATAMIENTO_SUGERIDOS = [
+  "Consulta general", "Limpieza dental", "Extraccion", "Resina", "Endodoncia",
+  "Corona", "Blanqueamiento", "Ajuste de ortodoncia", "Radiografia", "Otro",
+];
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -188,6 +194,7 @@ async function enterApp({ role, name }) {
   document.getElementById("app-screen").classList.remove("hidden");
   document.getElementById("user-name").textContent = `${name} (${role})`;
   document.getElementById("nav-settings").classList.toggle("hidden", role !== "doctora");
+  document.getElementById("nav-consultas").classList.toggle("hidden", role !== "doctora");
   document.getElementById("btn-new-insumo").classList.toggle("hidden", role !== "doctora");
   document.querySelectorAll(".doctora-only").forEach((n) => n.classList.toggle("hidden", role !== "doctora"));
 
@@ -198,7 +205,10 @@ async function enterApp({ role, name }) {
   await loadPacientes();
   await loadCitas();
   await loadInsumos();
-  if (role === "doctora") await loadSettingsView();
+  if (role === "doctora") {
+    await loadConsultas();
+    await loadSettingsView();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +464,13 @@ function renderCitas() {
     tr.appendChild(el("td", {}, [
       el("div", { class: "row-actions" }, [
         el("button", { class: "btn-secondary", text: "Editar", onclick: () => openCitaModal(c) }),
+        state.role === "doctora" && el("button", {
+          class: "btn-secondary", text: "Registrar consulta",
+          onclick: () => openConsultaModal(null, {
+            patient_id: c.patient_id, appointment_id: c.id,
+            tipo_tratamiento: c.tipo_tratamiento, fecha: c.fecha_hora.slice(0, 10),
+          }),
+        }),
         el("button", { class: "btn-danger", text: "Eliminar", onclick: () => deleteCita(c) }),
       ]),
     ]));
@@ -541,6 +558,304 @@ async function deleteCita(cita) {
   } catch (err) {
     alert(err.message);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Consultas / tratamientos
+// ---------------------------------------------------------------------------
+
+async function loadConsultas() {
+  state.consultas = await api("/api/visitas");
+  renderConsultas();
+}
+
+function renderConsultas() {
+  const tbody = document.getElementById("consultas-tbody");
+  tbody.innerHTML = "";
+  document.getElementById("consultas-empty").classList.toggle("hidden", state.consultas.length > 0);
+
+  state.consultas.forEach((c) => {
+    const tr = el("tr", {});
+    tr.appendChild(el("td", { text: c.fecha || "-" }));
+    tr.appendChild(el("td", { text: c.patient_nombre || "-" }));
+    tr.appendChild(el("td", { text: c.tipo_tratamiento || "-" }));
+    tr.appendChild(el("td", { text: formatMoney(c.precio_total) }));
+    tr.appendChild(el("td", { text: formatMoney(c.total_pagado) }));
+
+    const saldoTd = el("td", { text: formatMoney(c.saldo) });
+    if (c.saldo > 0) saldoTd.appendChild(el("span", { class: "tag tag-warning", text: "Pendiente" }));
+    tr.appendChild(saldoTd);
+
+    tr.appendChild(el("td", {}, [
+      el("div", { class: "row-actions" }, [
+        el("button", { class: "btn-secondary", text: "Ver / Editar", onclick: () => openConsultaDetail(c.id) }),
+        el("button", { class: "btn-danger", text: "Eliminar", onclick: () => deleteConsulta(c) }),
+      ]),
+    ]));
+    tbody.appendChild(tr);
+  });
+}
+
+function buildItemRow(item) {
+  const insumoOptions = [el("option", { value: "", text: "Selecciona un insumo..." })].concat(
+    state.insumos.map((i) => el("option", {
+      value: i.id,
+      text: `${i.nombre} (stock: ${i.stock})`,
+      selected: item && item.inventory_id === i.id ? "selected" : undefined,
+    }))
+  );
+
+  const select = el("select", { class: "item-insumo" }, insumoOptions);
+  const cantidadInput = el("input", {
+    type: "number", step: "any", min: "0", class: "item-cantidad", placeholder: "Cantidad",
+    value: item ? item.cantidad : "",
+  });
+  const costoInput = el("input", {
+    type: "number", step: "any", min: "0", class: "item-costo", placeholder: "Costo unitario",
+    value: item ? item.costo_unitario : "",
+  });
+
+  select.addEventListener("change", () => {
+    const insumo = state.insumos.find((i) => String(i.id) === select.value);
+    if (insumo && costoInput.value === "" && insumo.costo !== undefined) {
+      costoInput.value = insumo.costo || 0;
+    }
+  });
+
+  const row = el("div", { class: "item-row" }, [
+    select, cantidadInput, costoInput,
+    el("button", { type: "button", class: "btn-secondary", text: "Quitar", onclick: () => row.remove() }),
+  ]);
+  return row;
+}
+
+function openConsultaModal(consulta, prefill) {
+  const isEdit = Boolean(consulta);
+  const data = consulta || prefill || {};
+
+  const pacienteOptions = state.pacientes.map((p) =>
+    el("option", { value: p.id, text: p.nombre, selected: data.patient_id === p.id ? "selected" : undefined }));
+
+  const itemsContainer = el("div", { class: "items-container" });
+  (data.items || []).forEach((item) => itemsContainer.appendChild(buildItemRow(item)));
+
+  const form = el("form", {}, [
+    el("h3", { text: isEdit ? "Editar consulta" : "Nueva consulta" }),
+    el("label", {}, [
+      document.createTextNode("Paciente *"),
+      el("select", { name: "patient_id", required: "required" }, pacienteOptions),
+    ]),
+    el("div", { class: "form-grid" }, [
+      el("label", {}, [
+        document.createTextNode("Fecha"),
+        el("input", { name: "fecha", type: "date", value: data.fecha || todayStr() }),
+      ]),
+      el("label", {}, [
+        document.createTextNode("Tratamiento"),
+        el("input", { name: "tipo_tratamiento", type: "text", list: "tratamiento-options", value: data.tipo_tratamiento || "" }),
+      ]),
+      el("label", {}, [
+        document.createTextNode("Costo de mano de obra"),
+        el("input", { name: "costo_mano_obra", type: "number", step: "any", value: data.costo_mano_obra || 0 }),
+      ]),
+      el("label", {}, [
+        document.createTextNode("Precio total (lo que se le cobra al paciente)"),
+        el("input", { name: "precio_total", type: "number", step: "any", value: data.precio_total !== undefined ? data.precio_total : "" }),
+      ]),
+    ]),
+    el("datalist", { id: "tratamiento-options" }, TRATAMIENTO_SUGERIDOS.map((t) => el("option", { value: t }))),
+    el("label", {}, [
+      document.createTextNode("Notas"),
+      el("input", { name: "notas", type: "text", value: data.notas || "" }),
+    ]),
+    el("h3", { text: "Insumos usados" }),
+    itemsContainer,
+    el("button", {
+      type: "button", class: "btn-secondary", text: "+ Agregar insumo",
+      onclick: () => itemsContainer.appendChild(buildItemRow(null)),
+    }),
+    el("div", { class: "modal-actions" }, [
+      el("button", { type: "button", class: "btn-secondary", text: "Cancelar", onclick: closeModal }),
+      el("button", { type: "submit", class: "btn-primary", text: isEdit ? "Guardar cambios" : "Crear consulta" }),
+    ]),
+  ]);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const formData = new FormData(form);
+    const payload = {
+      patient_id: Number(formData.get("patient_id")),
+      fecha: formData.get("fecha"),
+      tipo_tratamiento: formData.get("tipo_tratamiento"),
+      costo_mano_obra: formData.get("costo_mano_obra"),
+      notas: formData.get("notas"),
+    };
+    const precioTotal = formData.get("precio_total");
+    if (precioTotal !== "") payload.precio_total = precioTotal;
+    if (isEdit && data.appointment_id) payload.appointment_id = data.appointment_id;
+    else if (prefill && prefill.appointment_id) payload.appointment_id = prefill.appointment_id;
+
+    payload.items = Array.from(itemsContainer.querySelectorAll(".item-row"))
+      .map((row) => ({
+        inventory_id: Number(row.querySelector(".item-insumo").value),
+        cantidad: row.querySelector(".item-cantidad").value,
+        costo_unitario: row.querySelector(".item-costo").value,
+      }))
+      .filter((item) => item.inventory_id);
+
+    try {
+      if (isEdit) {
+        await api(`/api/visitas/${consulta.id}`, { method: "PUT", body: payload });
+      } else {
+        await api("/api/visitas", { method: "POST", body: payload });
+      }
+      closeModal();
+      await loadConsultas();
+      await loadInsumos();
+      await loadCitas();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  openModal(form);
+}
+
+async function openConsultaDetail(consultaId) {
+  const data = await api(`/api/visitas/${consultaId}`);
+
+  const container = el("div", {}, [
+    el("h3", { text: `${data.patient_nombre || "Paciente"} - ${data.fecha}` }),
+    el("p", { text: `Tratamiento: ${data.tipo_tratamiento || "-"}` }),
+    el("p", { text: `Precio total: ${formatMoney(data.precio_total)}  |  Pagado: ${formatMoney(data.total_pagado)}  |  Saldo: ${formatMoney(data.saldo)}` }),
+  ]);
+
+  if (data.items.length) {
+    const itemsList = el("ul", {});
+    data.items.forEach((i) => {
+      itemsList.appendChild(el("li", { text: `${i.insumo_nombre || "Insumo"}: ${i.cantidad} x ${formatMoney(i.costo_unitario)}` }));
+    });
+    container.appendChild(el("h3", { text: "Insumos usados" }));
+    container.appendChild(itemsList);
+  }
+
+  container.appendChild(el("h3", { text: "Pagos" }));
+  const paymentsList = el("div", { class: "notes-list" });
+  if (data.payments.length === 0) {
+    paymentsList.appendChild(el("p", { class: "empty-text", text: "Sin pagos registrados." }));
+  }
+  data.payments.forEach((p) => {
+    paymentsList.appendChild(el("div", { class: "note-item" }, [
+      el("div", { text: `${formatMoney(p.monto)} - ${p.metodo || "sin metodo"}` }),
+      el("div", { class: "note-meta" }, [
+        document.createTextNode(`${p.fecha} `),
+        el("button", {
+          class: "btn-danger", text: "Eliminar",
+          onclick: async () => {
+            await api(`/api/pagos/${p.id}`, { method: "DELETE" });
+            closeModal();
+            await openConsultaDetail(consultaId);
+            await loadConsultas();
+          },
+        }),
+      ]),
+    ]));
+  });
+  container.appendChild(paymentsList);
+
+  const pagoForm = el("form", { class: "inline-form" }, [
+    el("label", {}, [
+      document.createTextNode("Monto"),
+      el("input", { name: "monto", type: "number", step: "any", required: "required" }),
+    ]),
+    el("label", {}, [
+      document.createTextNode("Metodo"),
+      el("input", { name: "metodo", type: "text", placeholder: "efectivo, tarjeta..." }),
+    ]),
+    el("button", { type: "submit", class: "btn-primary", text: "Registrar pago" }),
+  ]);
+  pagoForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(pagoForm);
+    try {
+      await api(`/api/visitas/${consultaId}/pagos`, {
+        method: "POST", body: { monto: fd.get("monto"), metodo: fd.get("metodo") },
+      });
+      closeModal();
+      await openConsultaDetail(consultaId);
+      await loadConsultas();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  container.appendChild(pagoForm);
+
+  container.appendChild(el("div", { class: "modal-actions" }, [
+    el("button", { class: "btn-secondary", text: "Editar", onclick: () => { closeModal(); openConsultaModal(data); } }),
+    el("button", { class: "btn-primary", text: "Generar recibo PDF", onclick: () => generarReciboPdf(data) }),
+  ]));
+
+  openModal(container);
+}
+
+async function deleteConsulta(consulta) {
+  if (!confirm("Eliminar esta consulta? El stock de insumos usados se devolvera al inventario.")) return;
+  try {
+    await api(`/api/visitas/${consulta.id}`, { method: "DELETE" });
+    await loadConsultas();
+    await loadInsumos();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function generarReciboPdf(data) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ compress: true });
+  const clinicName = document.getElementById("app-clinic-name").textContent;
+
+  try {
+    const logoDataUrl = await imageToDataUrl("/static/logo.png");
+    if (logoDataUrl) doc.addImage(logoDataUrl, "PNG", 15, 12, 40, 24);
+  } catch (_) { /* si no hay logo, se omite */ }
+
+  doc.setFontSize(16);
+  doc.text(clinicName, 60, 20);
+  doc.setFontSize(11);
+  doc.text("Recibo de tratamiento", 60, 28);
+
+  doc.setFontSize(10);
+  let y = 46;
+  doc.text(`Paciente: ${data.patient_nombre || "-"}`, 15, y); y += 7;
+  doc.text(`Fecha: ${data.fecha}`, 15, y); y += 7;
+  doc.text(`Tratamiento: ${data.tipo_tratamiento || "-"}`, 15, y); y += 12;
+
+  doc.setFontSize(11);
+  doc.text(`Total: ${formatMoney(data.precio_total)}`, 15, y); y += 7;
+  doc.text(`Pagado: ${formatMoney(data.total_pagado)}`, 15, y); y += 7;
+  doc.text(`Saldo pendiente: ${formatMoney(data.saldo)}`, 15, y); y += 12;
+
+  if (data.payments.length) {
+    doc.setFontSize(10);
+    doc.text("Pagos:", 15, y); y += 6;
+    data.payments.forEach((p) => {
+      doc.text(`- ${p.fecha}: ${formatMoney(p.monto)} (${p.metodo || "sin metodo"})`, 18, y);
+      y += 6;
+    });
+  }
+
+  doc.save(`recibo-${(data.patient_nombre || "paciente").replace(/\s+/g, "_")}-${data.fecha}.pdf`);
+}
+
+async function imageToDataUrl(url) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -834,6 +1149,8 @@ function setupNav() {
   });
   document.getElementById("btn-cita-prev-day").addEventListener("click", () => shiftCitaDay(-1));
   document.getElementById("btn-cita-next-day").addEventListener("click", () => shiftCitaDay(1));
+
+  document.getElementById("btn-new-consulta").addEventListener("click", () => openConsultaModal(null));
 
   document.getElementById("form-clinic-name").addEventListener("submit", async (e) => {
     e.preventDefault();

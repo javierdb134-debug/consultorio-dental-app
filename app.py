@@ -24,6 +24,8 @@ PACIENTE_FIELDS = [
     "recall_meses", "proxima_revision",
 ]
 
+TRATAMIENTO_FIELDS = ["patient_id", "fecha", "tipo_tratamiento", "costo_mano_obra", "precio_total", "notas"]
+
 FDI_TEETH = (
     [str(n) for n in range(18, 10, -1)] + [str(n) for n in range(21, 29)]
     + [str(n) for n in range(48, 40, -1)] + [str(n) for n in range(31, 39)]
@@ -140,6 +142,29 @@ def serialize_paciente(row):
         "proxima_revision": row["proxima_revision"],
         "revision_pendiente": dias is not None and dias <= DIAS_ALERTA_REVISION,
     }
+
+
+def serialize_visita(row, items=None, payments=None):
+    data = {
+        "id": row["id"],
+        "patient_id": row["patient_id"],
+        "patient_nombre": row["patient_nombre"] if "patient_nombre" in row.keys() else None,
+        "appointment_id": row["appointment_id"],
+        "fecha": row["fecha"],
+        "tipo_tratamiento": row["tipo_tratamiento"],
+        "costo_mano_obra": row["costo_mano_obra"],
+        "costo_insumos": row["costo_insumos"],
+        "precio_total": row["precio_total"],
+        "notas": row["notas"],
+    }
+    if items is not None:
+        data["items"] = items
+    if payments is not None:
+        total_pagado = round(sum(p["monto"] for p in payments), 2)
+        data["payments"] = payments
+        data["total_pagado"] = total_pagado
+        data["saldo"] = round(row["precio_total"] - total_pagado, 2)
+    return data
 
 
 def serialize_cita(row):
@@ -806,6 +831,251 @@ def update_cita(cita_id):
 def delete_cita(cita_id):
     conn = get_db()
     conn.execute("DELETE FROM appointments WHERE id = ?", (cita_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Consultas / tratamientos
+# ---------------------------------------------------------------------------
+
+def apply_visit_items(conn, items):
+    """Valida stock suficiente para cada insumo y lo descuenta.
+    Devuelve (items_resueltos, costo_insumos_total). Lanza ValueError con un
+    mensaje legible si falta stock o el insumo no existe."""
+    resolved = []
+    costo_insumos = 0.0
+    for item in items:
+        insumo = conn.execute("SELECT * FROM inventory WHERE id = ?", (item.get("inventory_id"),)).fetchone()
+        if not insumo:
+            raise ValueError("Uno de los insumos seleccionados ya no existe")
+        try:
+            cantidad = float(item.get("cantidad"))
+        except (TypeError, ValueError):
+            raise ValueError(f"Cantidad invalida para \"{insumo['nombre']}\"")
+        if cantidad <= 0:
+            raise ValueError(f"Cantidad invalida para \"{insumo['nombre']}\"")
+        if insumo["stock"] < cantidad:
+            raise ValueError(f"Stock insuficiente de \"{insumo['nombre']}\" (disponible: {insumo['stock']})")
+        raw_costo = item.get("costo_unitario")
+        costo_unitario = float(raw_costo) if raw_costo not in (None, "") else float(insumo["costo"] or 0)
+        conn.execute(
+            "UPDATE inventory SET stock = stock - ?, updated_at = datetime('now') WHERE id = ?",
+            (cantidad, insumo["id"]),
+        )
+        costo_insumos += cantidad * costo_unitario
+        resolved.append({"inventory_id": insumo["id"], "cantidad": cantidad, "costo_unitario": costo_unitario})
+    return resolved, round(costo_insumos, 2)
+
+
+def restore_visit_items(conn, visita_id):
+    """Devuelve al inventario el stock consumido por una consulta y borra sus renglones."""
+    rows = conn.execute(
+        "SELECT inventory_id, cantidad FROM visit_items WHERE visit_id = ?", (visita_id,)
+    ).fetchall()
+    for r in rows:
+        conn.execute("UPDATE inventory SET stock = stock + ? WHERE id = ?", (r["cantidad"], r["inventory_id"]))
+    conn.execute("DELETE FROM visit_items WHERE visit_id = ?", (visita_id,))
+
+
+def get_visita_row(conn, visita_id):
+    return conn.execute(
+        """SELECT visits.*, patients.nombre AS patient_nombre FROM visits
+           LEFT JOIN patients ON patients.id = visits.patient_id
+           WHERE visits.id = ?""",
+        (visita_id,),
+    ).fetchone()
+
+
+@app.route("/api/visitas", methods=["GET"])
+@login_required("doctora")
+def list_visitas():
+    patient_id = request.args.get("patient_id")
+    conn = get_db()
+    query = """SELECT visits.*, patients.nombre AS patient_nombre FROM visits
+               LEFT JOIN patients ON patients.id = visits.patient_id"""
+    params = []
+    if patient_id:
+        query += " WHERE visits.patient_id = ?"
+        params.append(patient_id)
+    query += " ORDER BY visits.fecha DESC, visits.id DESC"
+    rows = conn.execute(query, params).fetchall()
+
+    result = []
+    for row in rows:
+        payments = [dict(p) for p in conn.execute(
+            "SELECT monto FROM payments WHERE visit_id = ?", (row["id"],)
+        ).fetchall()]
+        result.append(serialize_visita(row, payments=payments))
+    conn.close()
+    return jsonify(result)
+
+
+@app.route("/api/visitas/<int:visita_id>", methods=["GET"])
+@login_required("doctora")
+def get_visita(visita_id):
+    conn = get_db()
+    row = get_visita_row(conn, visita_id)
+    if not row:
+        conn.close()
+        return jsonify({"error": "Consulta no encontrada"}), 404
+
+    items_rows = conn.execute(
+        """SELECT visit_items.*, inventory.nombre AS insumo_nombre FROM visit_items
+           LEFT JOIN inventory ON inventory.id = visit_items.inventory_id
+           WHERE visit_id = ?""",
+        (visita_id,),
+    ).fetchall()
+    payments_rows = conn.execute(
+        "SELECT * FROM payments WHERE visit_id = ? ORDER BY fecha, id", (visita_id,)
+    ).fetchall()
+    conn.close()
+
+    items = [
+        {
+            "id": i["id"], "inventory_id": i["inventory_id"], "insumo_nombre": i["insumo_nombre"],
+            "cantidad": i["cantidad"], "costo_unitario": i["costo_unitario"],
+        }
+        for i in items_rows
+    ]
+    payments = [
+        {"id": p["id"], "fecha": p["fecha"], "monto": p["monto"], "metodo": p["metodo"]}
+        for p in payments_rows
+    ]
+    return jsonify(serialize_visita(row, items=items, payments=payments))
+
+
+@app.route("/api/visitas", methods=["POST"])
+@login_required("doctora")
+def create_visita():
+    body = request.get_json(silent=True) or {}
+    if not body.get("patient_id"):
+        return jsonify({"error": "El paciente es obligatorio"}), 400
+
+    conn = get_db()
+    try:
+        resolved_items, costo_insumos = apply_visit_items(conn, body.get("items") or [])
+    except ValueError as e:
+        conn.close()
+        return jsonify({"error": str(e)}), 400
+
+    costo_mano_obra = float(body.get("costo_mano_obra") or 0)
+    precio_total = body.get("precio_total")
+    precio_total = float(precio_total) if precio_total not in (None, "") else round(costo_mano_obra + costo_insumos, 2)
+    fecha = body.get("fecha") or date.today().isoformat()
+
+    conn.execute(
+        """INSERT INTO visits (patient_id, appointment_id, fecha, tipo_tratamiento,
+           costo_mano_obra, costo_insumos, precio_total, notas)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            body["patient_id"], body.get("appointment_id"), fecha, body.get("tipo_tratamiento"),
+            costo_mano_obra, costo_insumos, precio_total, body.get("notas"),
+        ),
+    )
+    visita_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    for item in resolved_items:
+        conn.execute(
+            "INSERT INTO visit_items (visit_id, inventory_id, cantidad, costo_unitario) VALUES (?, ?, ?, ?)",
+            (visita_id, item["inventory_id"], item["cantidad"], item["costo_unitario"]),
+        )
+
+    if body.get("appointment_id"):
+        conn.execute("UPDATE appointments SET estado = 'completada' WHERE id = ?", (body["appointment_id"],))
+
+    conn.commit()
+    row = get_visita_row(conn, visita_id)
+    conn.close()
+    return jsonify(serialize_visita(row, items=[], payments=[])), 201
+
+
+@app.route("/api/visitas/<int:visita_id>", methods=["PUT"])
+@login_required("doctora")
+def update_visita(visita_id):
+    body = request.get_json(silent=True) or {}
+    conn = get_db()
+    row = conn.execute("SELECT * FROM visits WHERE id = ?", (visita_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Consulta no encontrada"}), 404
+
+    if "items" in body:
+        restore_visit_items(conn, visita_id)
+        try:
+            resolved_items, costo_insumos = apply_visit_items(conn, body["items"] or [])
+        except ValueError as e:
+            conn.rollback()
+            conn.close()
+            return jsonify({"error": str(e)}), 400
+        for item in resolved_items:
+            conn.execute(
+                "INSERT INTO visit_items (visit_id, inventory_id, cantidad, costo_unitario) VALUES (?, ?, ?, ?)",
+                (visita_id, item["inventory_id"], item["cantidad"], item["costo_unitario"]),
+            )
+    else:
+        costo_insumos = row["costo_insumos"]
+
+    updates = {f: body[f] for f in TRATAMIENTO_FIELDS if f in body}
+    updates["costo_insumos"] = costo_insumos
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    conn.execute(f"UPDATE visits SET {set_clause} WHERE id = ?", (*updates.values(), visita_id))
+    conn.commit()
+
+    row = get_visita_row(conn, visita_id)
+    conn.close()
+    return jsonify(serialize_visita(row))
+
+
+@app.route("/api/visitas/<int:visita_id>", methods=["DELETE"])
+@login_required("doctora")
+def delete_visita(visita_id):
+    conn = get_db()
+    row = conn.execute("SELECT id FROM visits WHERE id = ?", (visita_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Consulta no encontrada"}), 404
+
+    restore_visit_items(conn, visita_id)
+    conn.execute("DELETE FROM payments WHERE visit_id = ?", (visita_id,))
+    conn.execute("DELETE FROM visits WHERE id = ?", (visita_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/visitas/<int:visita_id>/pagos", methods=["POST"])
+@login_required("doctora")
+def add_pago(visita_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        monto = float(body.get("monto"))
+    except (TypeError, ValueError):
+        monto = 0
+    if monto <= 0:
+        return jsonify({"error": "El monto debe ser mayor a 0"}), 400
+
+    conn = get_db()
+    visita = conn.execute("SELECT id FROM visits WHERE id = ?", (visita_id,)).fetchone()
+    if not visita:
+        conn.close()
+        return jsonify({"error": "Consulta no encontrada"}), 404
+
+    conn.execute(
+        "INSERT INTO payments (visit_id, fecha, monto, metodo) VALUES (?, ?, ?, ?)",
+        (visita_id, body.get("fecha") or date.today().isoformat(), monto, body.get("metodo")),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 201
+
+
+@app.route("/api/pagos/<int:pago_id>", methods=["DELETE"])
+@login_required("doctora")
+def delete_pago(pago_id):
+    conn = get_db()
+    conn.execute("DELETE FROM payments WHERE id = ?", (pago_id,))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})

@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Consultorio">
 <link rel="stylesheet" href="/static/styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -57,6 +58,7 @@
     <nav id="app-nav" class="app-nav">
       <button type="button" class="nav-btn active" data-view="pacientes">Pacientes</button>
       <button type="button" class="nav-btn" data-view="citas">Citas</button>
+      <button type="button" class="nav-btn" data-view="consultas" id="nav-consultas">Consultas</button>
       <button type="button" class="nav-btn" data-view="insumos">Insumos</button>
       <button type="button" class="nav-btn" data-view="settings" id="nav-settings">Configuracion</button>
     </nav>
@@ -124,6 +126,31 @@
           <tbody id="citas-tbody"></tbody>
         </table>
         <p id="citas-empty" class="empty-text hidden">No hay citas agendadas para este dia.</p>
+      </div>
+    </section>
+
+    <section id="view-consultas" class="view hidden">
+      <div class="view-header">
+        <h2>Consultas</h2>
+        <button type="button" id="btn-new-consulta" class="btn-primary">+ Nueva consulta</button>
+      </div>
+
+      <div class="table-wrap">
+        <table id="table-consultas">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Paciente</th>
+              <th>Tratamiento</th>
+              <th>Total</th>
+              <th>Pagado</th>
+              <th>Saldo</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="consultas-tbody"></tbody>
+        </table>
+        <p id="consultas-empty" class="empty-text hidden">No hay consultas registradas todavia.</p>
       </div>
     </section>
 
