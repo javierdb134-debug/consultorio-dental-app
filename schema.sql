@@ -86,6 +86,9 @@ CREATE TABLE IF NOT EXISTS appointments (
     tipo_tratamiento TEXT,
     estado TEXT NOT NULL DEFAULT 'agendada'
         CHECK(estado IN ('agendada','confirmada','completada','cancelada','no_asistio')),
+    -- 'consultorio': la creo la doctora/asistente. 'portal': la pidio el
+    -- paciente desde la pagina publica de citas, sin iniciar sesion.
+    origen TEXT NOT NULL DEFAULT 'consultorio',
     notas TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

@@ -547,7 +547,12 @@ function renderCitas() {
     const hora = c.fecha_hora.slice(11, 16);
     const tr = el("tr", {});
     tr.appendChild(el("td", { text: hora }));
-    tr.appendChild(el("td", { text: c.patient_nombre || "-" }));
+
+    const pacienteTd = el("td", { text: c.patient_nombre || "-" });
+    if (c.origen === "portal" && c.estado === "agendada") {
+      pacienteTd.appendChild(el("span", { class: "tag tag-info", text: "Solicitada online" }));
+    }
+    tr.appendChild(pacienteTd);
     tr.appendChild(el("td", { text: c.tipo_tratamiento || "-" }));
     tr.appendChild(el("td", { text: `${c.duracion_minutos} min` }));
 
@@ -1035,6 +1040,17 @@ async function loadReporte() {
       text: `${c.fecha_hora.replace("T", " ")} - ${c.patient_nombre || "-"} (${c.tipo_tratamiento || "-"})`,
     }));
   });
+
+  const solicitudes = document.getElementById("reporte-solicitudes");
+  solicitudes.innerHTML = "";
+  if (data.solicitudes_pendientes.length === 0) {
+    solicitudes.appendChild(el("li", { text: "No hay solicitudes nuevas." }));
+  }
+  data.solicitudes_pendientes.forEach((s) => {
+    solicitudes.appendChild(el("li", {
+      text: `${s.fecha_hora.replace("T", " ")} - ${s.patient_nombre || "-"} (${s.patient_telefono || "-"})`,
+    }));
+  });
 }
 
 function renderFinancieroTabla(tbodyId, rows, columns, deletePath, onDeleted) {
@@ -1257,6 +1273,11 @@ async function deleteInsumo(insumo) {
 async function loadSettingsView() {
   const settings = await api("/api/settings");
   document.getElementById("input-clinic-name").value = settings.clinic_name || "";
+  document.getElementById("input-horario-inicio").value = settings.horario_inicio || "08:00";
+  document.getElementById("input-horario-fin").value = settings.horario_fin || "17:00";
+  document.getElementById("input-duracion-slot").value = settings.duracion_slot || 30;
+  document.getElementById("link-agendar").href = `${window.location.origin}/agendar`;
+  document.getElementById("link-agendar").textContent = `${window.location.origin}/agendar`;
   await renderAsistentes();
 }
 
@@ -1396,6 +1417,23 @@ function setupNav() {
       await api("/api/settings", { method: "PUT", body: { clinic_name: name } });
       document.getElementById("app-clinic-name").textContent = name;
       document.getElementById("login-clinic-name").textContent = name;
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  document.getElementById("form-horario").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("/api/settings", {
+        method: "PUT",
+        body: {
+          horario_inicio: document.getElementById("input-horario-inicio").value,
+          horario_fin: document.getElementById("input-horario-fin").value,
+          duracion_slot: document.getElementById("input-duracion-slot").value,
+        },
+      });
+      alert("Horario actualizado.");
     } catch (err) {
       alert(err.message);
     }

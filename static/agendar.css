@@ -1,0 +1,38 @@
+.agendar-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1.5rem 1rem;
+}
+
+.agendar-card { max-width: 420px; }
+
+.horarios-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.horario-btn {
+  padding: 0.6rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--accent-dark);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.horario-btn:hover { background: var(--bg); }
+
+#agendar-resumen {
+  background: #fafcfc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem;
+  font-size: 0.9rem;
+}
+
+.agendar-exito-banner { background: #e6f4ea; color: #2e7d32; text-align: center; }

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agendar cita</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#c2298f">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/agendar.css">
+</head>
+<body>
+
+<div class="agendar-screen">
+  <div class="login-card agendar-card">
+    <img src="/static/logo.png" alt="Logo" class="login-logo" onerror="this.style.display='none'">
+    <h1 id="agendar-clinic-name">Mi Consultorio</h1>
+    <p class="subtitle">Solicita tu cita en linea</p>
+
+    <div id="agendar-paso-datos">
+      <form id="form-agendar-datos" class="login-form">
+        <label>Nombre completo *
+          <input type="text" name="nombre" required maxlength="120">
+        </label>
+        <label>Telefono *
+          <input type="tel" name="telefono" required maxlength="40">
+        </label>
+        <label>Fecha deseada *
+          <input type="date" name="fecha" required>
+        </label>
+        <button type="submit">Ver horarios disponibles</button>
+      </form>
+    </div>
+
+    <div id="agendar-paso-horarios" class="hidden">
+      <p id="agendar-fecha-label" class="subtitle"></p>
+      <div id="agendar-horarios-grid" class="horarios-grid"></div>
+      <p id="agendar-sin-horarios" class="empty-text hidden">
+        No hay horarios disponibles ese dia. Intenta con otra fecha.
+      </p>
+      <button type="button" id="btn-agendar-volver" class="btn-secondary">Elegir otra fecha</button>
+    </div>
+
+    <div id="agendar-paso-confirmar" class="hidden">
+      <p class="subtitle">Confirmar solicitud</p>
+      <p id="agendar-resumen"></p>
+      <form id="form-agendar-confirmar" class="login-form">
+        <label>Motivo de la consulta (opcional)
+          <input type="text" name="tipo_tratamiento" list="agendar-tratamientos" maxlength="120">
+        </label>
+        <datalist id="agendar-tratamientos"></datalist>
+        <label>Notas adicionales (opcional)
+          <input type="text" name="notas" maxlength="300">
+        </label>
+        <button type="submit">Confirmar solicitud</button>
+      </form>
+      <button type="button" id="btn-confirmar-volver" class="btn-secondary">Volver</button>
+    </div>
+
+    <div id="agendar-paso-exito" class="hidden">
+      <div class="allergy-banner agendar-exito-banner">
+        Tu solicitud fue enviada. El consultorio la confirmara pronto.
+      </div>
+      <button type="button" id="btn-agendar-nueva" class="btn-secondary">Solicitar otra cita</button>
+    </div>
+
+    <p id="agendar-error" class="error-text hidden"></p>
+  </div>
+</div>
+
+<script src="/static/agendar.js"></script>
+</body>
+</html>

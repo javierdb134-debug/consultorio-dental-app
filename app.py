@@ -66,10 +66,21 @@ def get_db():
     return conn
 
 
+def migrate_db(conn):
+    """CREATE TABLE IF NOT EXISTS no modifica tablas que ya existen, asi que
+    los cambios de esquema posteriores al primer despliegue se aplican aqui
+    a mano, de forma segura para una base de datos que ya tiene datos reales."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(appointments)").fetchall()}
+    if "origen" not in columns:
+        conn.execute("ALTER TABLE appointments ADD COLUMN origen TEXT NOT NULL DEFAULT 'consultorio'")
+        conn.commit()
+
+
 def init_db():
     conn = get_db()
     conn.executescript((BASE_DIR / "schema.sql").read_text(encoding="utf-8"))
     conn.commit()
+    migrate_db(conn)
 
     doctora = conn.execute("SELECT id FROM users WHERE role = 'doctora' LIMIT 1").fetchone()
     if not doctora:
@@ -85,9 +96,14 @@ def init_db():
             ">>> Cambia esta contrasena desde Configuracion en cuanto entres.\n"
         )
 
-    conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('clinic_name', 'Mi Consultorio')"
-    )
+    default_settings = {
+        "clinic_name": "Mi Consultorio",
+        "horario_inicio": "08:00",
+        "horario_fin": "17:00",
+        "duracion_slot": "30",
+    }
+    for key, value in default_settings.items():
+        conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
     conn.commit()
     conn.close()
 
@@ -193,6 +209,7 @@ def serialize_cita(row):
         "duracion_minutos": row["duracion_minutos"],
         "tipo_tratamiento": row["tipo_tratamiento"],
         "estado": row["estado"],
+        "origen": row["origen"] if "origen" in row.keys() else "consultorio",
         "notas": row["notas"],
     }
 
@@ -958,6 +975,117 @@ def delete_cita(cita_id):
 
 
 # ---------------------------------------------------------------------------
+# Portal publico de citas (sin login) — el paciente ve horarios libres y pide
+# una cita, que le queda a la doctora como "agendada" + origen "portal" para
+# que la revise y confirme.
+# ---------------------------------------------------------------------------
+
+MAX_DIAS_ANTICIPACION_PORTAL = 60
+
+
+def get_horario_settings(conn):
+    rows = conn.execute(
+        "SELECT key, value FROM settings WHERE key IN ('horario_inicio', 'horario_fin', 'duracion_slot')"
+    ).fetchall()
+    values = {r["key"]: r["value"] for r in rows}
+    return (
+        values.get("horario_inicio") or "08:00",
+        values.get("horario_fin") or "17:00",
+        int(values.get("duracion_slot") or 30),
+    )
+
+
+@app.route("/agendar")
+def pagina_agendar():
+    return render_template("agendar.html")
+
+
+@app.route("/api/publico/disponibilidad")
+def publico_disponibilidad():
+    fecha_str = request.args.get("fecha") or ""
+    try:
+        fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Fecha invalida"}), 400
+
+    hoy = date.today()
+    if fecha < hoy or fecha > hoy + timedelta(days=MAX_DIAS_ANTICIPACION_PORTAL):
+        return jsonify({"error": "Fecha fuera de rango"}), 400
+
+    conn = get_db()
+    hora_inicio, hora_fin, duracion = get_horario_settings(conn)
+
+    inicio_dt = datetime.strptime(f"{fecha_str} {hora_inicio}", "%Y-%m-%d %H:%M")
+    fin_dt = datetime.strptime(f"{fecha_str} {hora_fin}", "%Y-%m-%d %H:%M")
+
+    slots = []
+    cursor = inicio_dt
+    ahora = datetime.now()
+    while cursor + timedelta(minutes=duracion) <= fin_dt:
+        fecha_hora_str = cursor.strftime("%Y-%m-%dT%H:%M")
+        if cursor > ahora and not appointments_overlap(conn, fecha_hora_str, duracion):
+            slots.append(cursor.strftime("%H:%M"))
+        cursor += timedelta(minutes=duracion)
+
+    conn.close()
+    return jsonify({"fecha": fecha_str, "duracion_slot": duracion, "horarios": slots})
+
+
+@app.route("/api/publico/citas", methods=["POST"])
+def publico_crear_cita():
+    body = request.get_json(silent=True) or {}
+    nombre = (body.get("nombre") or "").strip()
+    telefono = (body.get("telefono") or "").strip()
+    fecha_str = (body.get("fecha") or "").strip()
+    hora = (body.get("hora") or "").strip()
+
+    if not nombre or not telefono or not fecha_str or not hora:
+        return jsonify({"error": "Nombre, telefono, fecha y hora son obligatorios"}), 400
+    if len(nombre) > 120 or len(telefono) > 40:
+        return jsonify({"error": "Datos invalidos"}), 400
+
+    try:
+        fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Fecha invalida"}), 400
+    hoy = date.today()
+    if fecha < hoy or fecha > hoy + timedelta(days=MAX_DIAS_ANTICIPACION_PORTAL):
+        return jsonify({"error": "Fecha fuera de rango"}), 400
+
+    fecha_hora = f"{fecha_str}T{hora}"
+    try:
+        datetime.strptime(fecha_hora, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return jsonify({"error": "Hora invalida"}), 400
+
+    conn = get_db()
+    _, _, duracion = get_horario_settings(conn)
+
+    if appointments_overlap(conn, fecha_hora, duracion):
+        conn.close()
+        return jsonify({"error": "Ese horario ya no esta disponible, elige otro"}), 409
+
+    paciente = conn.execute(
+        "SELECT id FROM patients WHERE telefono = ? ORDER BY id LIMIT 1", (telefono,)
+    ).fetchone()
+    if paciente:
+        patient_id = paciente["id"]
+    else:
+        conn.execute("INSERT INTO patients (nombre, telefono) VALUES (?, ?)", (nombre, telefono))
+        patient_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    conn.execute(
+        """INSERT INTO appointments (patient_id, fecha_hora, duracion_minutos, tipo_tratamiento,
+           estado, origen, notas)
+           VALUES (?, ?, ?, ?, 'agendada', 'portal', ?)""",
+        (patient_id, fecha_hora, duracion, body.get("tipo_tratamiento"), body.get("notas")),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 201
+
+
+# ---------------------------------------------------------------------------
 # Consultas / tratamientos
 # ---------------------------------------------------------------------------
 
@@ -1363,6 +1491,14 @@ def reportes():
         (hoy,),
     ).fetchall()
 
+    solicitudes_pendientes = conn.execute(
+        """SELECT appointments.id, appointments.fecha_hora, appointments.tipo_tratamiento,
+                  patients.nombre AS patient_nombre, patients.telefono AS patient_telefono
+           FROM appointments LEFT JOIN patients ON patients.id = appointments.patient_id
+           WHERE appointments.origen = 'portal' AND appointments.estado = 'agendada'
+           ORDER BY appointments.fecha_hora LIMIT 20""",
+    ).fetchall()
+
     conn.close()
 
     return jsonify({
@@ -1378,6 +1514,7 @@ def reportes():
         "insumos_mas_consumidos": [dict(r) for r in top_insumos],
         "insumos_por_vencer": [dict(r) for r in por_vencer],
         "proximas_citas": [dict(r) for r in proximas_citas],
+        "solicitudes_pendientes": [dict(r) for r in solicitudes_pendientes],
     })
 
 
