@@ -140,7 +140,7 @@ input, select {
 .brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: var(--accent-dark); font-size: 1.1rem; }
 .brand-logo { height: 36px; width: auto; object-fit: contain; }
 
-.app-nav { display: flex; gap: 0.5rem; flex: 1; }
+.app-nav { display: flex; flex-wrap: wrap; gap: 0.5rem; flex: 1; min-width: 0; }
 .nav-btn {
   background: transparent;
   padding: 0.5rem 0.9rem;
@@ -347,3 +347,34 @@ tr.row-expiring td:nth-child(5) { color: var(--warning); font-weight: 700; }
 @media (max-width: 560px) {
   .item-row { grid-template-columns: 1fr; }
 }
+
+/* ---------- Finanzas / reportes ---------- */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.stat-tile {
+  background: #fafcfc;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.8rem;
+  text-align: center;
+}
+.stat-tile .stat-label { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 0.3rem; }
+.stat-tile .stat-value { font-size: 1.2rem; font-weight: 700; color: var(--accent-dark); }
+.stat-tile.stat-negative .stat-value { color: var(--danger); }
+
+.report-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.2rem;
+  margin-top: 0.8rem;
+}
+.report-columns h4 { margin: 0 0 0.4rem; font-size: 0.9rem; color: var(--text-dim); }
+
+.plain-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.88rem; }
+.plain-list li { border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }

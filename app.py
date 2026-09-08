@@ -1081,6 +1081,185 @@ def delete_pago(pago_id):
     return jsonify({"ok": True})
 
 
+# ---------------------------------------------------------------------------
+# Finanzas: gastos, otros ingresos, nomina
+# ---------------------------------------------------------------------------
+
+def crud_financiero(table, fields, required_field="concepto"):
+    """Registra las 4 rutas GET/POST/PUT/DELETE para una tabla financiera simple
+    (expenses, other_incomes, payroll), que comparten la misma forma basica."""
+
+    def list_rows():
+        conn = get_db()
+        rows = conn.execute(f"SELECT * FROM {table} ORDER BY fecha DESC, id DESC").fetchall()
+        conn.close()
+        return jsonify([dict(r) for r in rows])
+
+    def create_row():
+        body = request.get_json(silent=True) or {}
+        if not body.get(required_field):
+            return jsonify({"error": f"El campo '{required_field}' es obligatorio"}), 400
+        try:
+            monto = float(body.get("monto"))
+        except (TypeError, ValueError):
+            monto = 0
+        if monto <= 0:
+            return jsonify({"error": "El monto debe ser mayor a 0"}), 400
+
+        columns = [f for f in fields if f != "id"]
+        values = []
+        for col in columns:
+            if col == "monto":
+                values.append(monto)
+            elif col == "fecha":
+                values.append(body.get("fecha") or date.today().isoformat())
+            else:
+                values.append(body.get(col))
+        placeholders = ", ".join("?" for _ in columns)
+        conn = get_db()
+        conn.execute(f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})", values)
+        conn.commit()
+        new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (new_id,)).fetchone()
+        conn.close()
+        return jsonify(dict(row)), 201
+
+    def update_row(row_id):
+        body = request.get_json(silent=True) or {}
+        conn = get_db()
+        row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (row_id,)).fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "Registro no encontrado"}), 404
+        updates = {f: body[f] for f in fields if f in body and f != "id"}
+        if "monto" in updates:
+            try:
+                if float(updates["monto"]) <= 0:
+                    conn.close()
+                    return jsonify({"error": "El monto debe ser mayor a 0"}), 400
+            except (TypeError, ValueError):
+                conn.close()
+                return jsonify({"error": "Monto invalido"}), 400
+        if updates:
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            conn.execute(f"UPDATE {table} SET {set_clause} WHERE id = ?", (*updates.values(), row_id))
+            conn.commit()
+        row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (row_id,)).fetchone()
+        conn.close()
+        return jsonify(dict(row))
+
+    def delete_row(row_id):
+        conn = get_db()
+        conn.execute(f"DELETE FROM {table} WHERE id = ?", (row_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True})
+
+    return list_rows, create_row, update_row, delete_row
+
+
+_gastos_list, _gastos_create, _gastos_update, _gastos_delete = crud_financiero(
+    "expenses", ["fecha", "concepto", "monto", "categoria"]
+)
+app.add_url_rule("/api/gastos", "list_gastos", login_required("doctora")(_gastos_list), methods=["GET"])
+app.add_url_rule("/api/gastos", "create_gasto", login_required("doctora")(_gastos_create), methods=["POST"])
+app.add_url_rule("/api/gastos/<int:row_id>", "update_gasto", login_required("doctora")(_gastos_update), methods=["PUT"])
+app.add_url_rule("/api/gastos/<int:row_id>", "delete_gasto", login_required("doctora")(_gastos_delete), methods=["DELETE"])
+
+_ingresos_list, _ingresos_create, _ingresos_update, _ingresos_delete = crud_financiero(
+    "other_incomes", ["fecha", "concepto", "monto"]
+)
+app.add_url_rule("/api/otros-ingresos", "list_ingresos", login_required("doctora")(_ingresos_list), methods=["GET"])
+app.add_url_rule("/api/otros-ingresos", "create_ingreso", login_required("doctora")(_ingresos_create), methods=["POST"])
+app.add_url_rule("/api/otros-ingresos/<int:row_id>", "update_ingreso", login_required("doctora")(_ingresos_update), methods=["PUT"])
+app.add_url_rule("/api/otros-ingresos/<int:row_id>", "delete_ingreso", login_required("doctora")(_ingresos_delete), methods=["DELETE"])
+
+_nomina_list, _nomina_create, _nomina_update, _nomina_delete = crud_financiero(
+    "payroll", ["person", "fecha", "monto", "concepto"], required_field="person"
+)
+app.add_url_rule("/api/nomina", "list_nomina", login_required("doctora")(_nomina_list), methods=["GET"])
+app.add_url_rule("/api/nomina", "create_nomina", login_required("doctora")(_nomina_create), methods=["POST"])
+app.add_url_rule("/api/nomina/<int:row_id>", "update_nomina", login_required("doctora")(_nomina_update), methods=["PUT"])
+app.add_url_rule("/api/nomina/<int:row_id>", "delete_nomina", login_required("doctora")(_nomina_delete), methods=["DELETE"])
+
+
+# ---------------------------------------------------------------------------
+# Reportes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/reportes")
+@login_required("doctora")
+def reportes():
+    hoy = date.today().isoformat()
+    desde = request.args.get("desde") or hoy[:8] + "01"
+    hasta_param = request.args.get("hasta")
+    hasta_exclusive = (
+        datetime.strptime(hasta_param, "%Y-%m-%d").date() + timedelta(days=1)
+    ).isoformat() if hasta_param else None
+
+    conn = get_db()
+
+    def sum_range(table, date_col="fecha"):
+        if hasta_exclusive:
+            row = conn.execute(
+                f"SELECT COALESCE(SUM(monto), 0) AS total FROM {table} WHERE {date_col} >= ? AND {date_col} < ?",
+                (desde, hasta_exclusive),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                f"SELECT COALESCE(SUM(monto), 0) AS total FROM {table} WHERE {date_col} >= ?", (desde,)
+            ).fetchone()
+        return round(row["total"], 2)
+
+    ingresos_consultas = sum_range("payments")
+    otros_ingresos = sum_range("other_incomes")
+    gastos = sum_range("expenses")
+    nomina = sum_range("payroll")
+
+    top_insumos = conn.execute(
+        """SELECT inventory.nombre, SUM(visit_items.cantidad) AS cantidad_total
+           FROM visit_items
+           JOIN visits ON visits.id = visit_items.visit_id
+           JOIN inventory ON inventory.id = visit_items.inventory_id
+           WHERE visits.fecha >= ? AND (? IS NULL OR visits.fecha < ?)
+           GROUP BY inventory.id ORDER BY cantidad_total DESC LIMIT 5""",
+        (desde, hasta_exclusive, hasta_exclusive),
+    ).fetchall()
+
+    por_vencer = conn.execute(
+        """SELECT nombre, fecha_caducidad, stock FROM inventory
+           WHERE fecha_caducidad IS NOT NULL AND fecha_caducidad != ''
+             AND date(fecha_caducidad) <= date(?, '+30 days')
+           ORDER BY fecha_caducidad LIMIT 10""",
+        (hoy,),
+    ).fetchall()
+
+    proximas_citas = conn.execute(
+        """SELECT appointments.fecha_hora, appointments.tipo_tratamiento, patients.nombre AS patient_nombre
+           FROM appointments LEFT JOIN patients ON patients.id = appointments.patient_id
+           WHERE appointments.fecha_hora >= ? AND appointments.estado NOT IN ('cancelada', 'completada')
+           ORDER BY appointments.fecha_hora LIMIT 10""",
+        (hoy,),
+    ).fetchall()
+
+    conn.close()
+
+    return jsonify({
+        "desde": desde,
+        "hasta": hasta_param,
+        "ingresos_consultas": ingresos_consultas,
+        "otros_ingresos": otros_ingresos,
+        "total_ingresos": round(ingresos_consultas + otros_ingresos, 2),
+        "gastos": gastos,
+        "nomina": nomina,
+        "total_egresos": round(gastos + nomina, 2),
+        "balance": round(ingresos_consultas + otros_ingresos - gastos - nomina, 2),
+        "insumos_mas_consumidos": [dict(r) for r in top_insumos],
+        "insumos_por_vencer": [dict(r) for r in por_vencer],
+        "proximas_citas": [dict(r) for r in proximas_citas],
+    })
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8600))
     app.run(host="0.0.0.0", port=port)

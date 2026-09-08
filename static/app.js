@@ -195,6 +195,7 @@ async function enterApp({ role, name }) {
   document.getElementById("user-name").textContent = `${name} (${role})`;
   document.getElementById("nav-settings").classList.toggle("hidden", role !== "doctora");
   document.getElementById("nav-consultas").classList.toggle("hidden", role !== "doctora");
+  document.getElementById("nav-finanzas").classList.toggle("hidden", role !== "doctora");
   document.getElementById("btn-new-insumo").classList.toggle("hidden", role !== "doctora");
   document.querySelectorAll(".doctora-only").forEach((n) => n.classList.toggle("hidden", role !== "doctora"));
 
@@ -208,6 +209,7 @@ async function enterApp({ role, name }) {
   if (role === "doctora") {
     await loadConsultas();
     await loadSettingsView();
+    await loadFinanzas();
   }
 }
 
@@ -859,6 +861,116 @@ async function imageToDataUrl(url) {
 }
 
 // ---------------------------------------------------------------------------
+// Finanzas / reportes
+// ---------------------------------------------------------------------------
+
+function firstDayOfMonthStr() {
+  const d = new Date();
+  return dateToStr(new Date(d.getFullYear(), d.getMonth(), 1));
+}
+
+async function loadFinanzas() {
+  const desdeInput = document.getElementById("reporte-desde");
+  const hastaInput = document.getElementById("reporte-hasta");
+  if (!desdeInput.value) desdeInput.value = firstDayOfMonthStr();
+  if (!hastaInput.value) hastaInput.value = todayStr();
+
+  await loadReporte();
+  await loadGastos();
+  await loadIngresos();
+  await loadNomina();
+
+  const asistentes = await api("/api/asistentes");
+  const datalist = document.getElementById("nomina-personas");
+  datalist.innerHTML = "";
+  asistentes.forEach((a) => datalist.appendChild(el("option", { value: a.name })));
+}
+
+async function loadReporte() {
+  const desde = document.getElementById("reporte-desde").value;
+  const hasta = document.getElementById("reporte-hasta").value;
+  const data = await api(`/api/reportes?desde=${desde}&hasta=${hasta}`);
+
+  const stats = document.getElementById("reporte-stats");
+  stats.innerHTML = "";
+  const tile = (label, value, negative) => el("div", { class: negative ? "stat-tile stat-negative" : "stat-tile" }, [
+    el("div", { class: "stat-label", text: label }),
+    el("div", { class: "stat-value", text: formatMoney(value) }),
+  ]);
+  stats.appendChild(tile("Ingresos por consultas", data.ingresos_consultas));
+  stats.appendChild(tile("Otros ingresos", data.otros_ingresos));
+  stats.appendChild(tile("Total ingresos", data.total_ingresos));
+  stats.appendChild(tile("Gastos", data.gastos));
+  stats.appendChild(tile("Nomina", data.nomina));
+  stats.appendChild(tile("Balance", data.balance, data.balance < 0));
+
+  const topInsumos = document.getElementById("reporte-top-insumos");
+  topInsumos.innerHTML = "";
+  if (data.insumos_mas_consumidos.length === 0) {
+    topInsumos.appendChild(el("li", { text: "Sin consumo en este periodo." }));
+  }
+  data.insumos_mas_consumidos.forEach((i) => {
+    topInsumos.appendChild(el("li", { text: `${i.nombre}: ${i.cantidad_total}` }));
+  });
+
+  const porVencer = document.getElementById("reporte-por-vencer");
+  porVencer.innerHTML = "";
+  if (data.insumos_por_vencer.length === 0) {
+    porVencer.appendChild(el("li", { text: "Nada por vencer pronto." }));
+  }
+  data.insumos_por_vencer.forEach((i) => {
+    porVencer.appendChild(el("li", { text: `${i.nombre} - vence ${i.fecha_caducidad} (stock: ${i.stock})` }));
+  });
+
+  const proximasCitas = document.getElementById("reporte-proximas-citas");
+  proximasCitas.innerHTML = "";
+  if (data.proximas_citas.length === 0) {
+    proximasCitas.appendChild(el("li", { text: "No hay citas proximas." }));
+  }
+  data.proximas_citas.forEach((c) => {
+    proximasCitas.appendChild(el("li", {
+      text: `${c.fecha_hora.replace("T", " ")} - ${c.patient_nombre || "-"} (${c.tipo_tratamiento || "-"})`,
+    }));
+  });
+}
+
+function renderFinancieroTabla(tbodyId, rows, columns, deletePath, onDeleted) {
+  const tbody = document.getElementById(tbodyId);
+  tbody.innerHTML = "";
+  rows.forEach((row) => {
+    const tr = el("tr", {});
+    columns.forEach((col) => {
+      tr.appendChild(el("td", { text: col === "monto" ? formatMoney(row[col]) : (row[col] || "-") }));
+    });
+    tr.appendChild(el("td", {}, [
+      el("button", {
+        class: "btn-danger", text: "Eliminar",
+        onclick: async () => {
+          await api(`${deletePath}/${row.id}`, { method: "DELETE" });
+          await onDeleted();
+        },
+      }),
+    ]));
+    tbody.appendChild(tr);
+  });
+}
+
+async function loadGastos() {
+  const rows = await api("/api/gastos");
+  renderFinancieroTabla("gastos-tbody", rows, ["fecha", "concepto", "categoria", "monto"], "/api/gastos", loadFinanzas);
+}
+
+async function loadIngresos() {
+  const rows = await api("/api/otros-ingresos");
+  renderFinancieroTabla("ingresos-tbody", rows, ["fecha", "concepto", "monto"], "/api/otros-ingresos", loadFinanzas);
+}
+
+async function loadNomina() {
+  const rows = await api("/api/nomina");
+  renderFinancieroTabla("nomina-tbody", rows, ["fecha", "person", "concepto", "monto"], "/api/nomina", loadFinanzas);
+}
+
+// ---------------------------------------------------------------------------
 // Insumos
 // ---------------------------------------------------------------------------
 
@@ -1151,6 +1263,28 @@ function setupNav() {
   document.getElementById("btn-cita-next-day").addEventListener("click", () => shiftCitaDay(1));
 
   document.getElementById("btn-new-consulta").addEventListener("click", () => openConsultaModal(null));
+
+  document.getElementById("form-reporte-rango").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await loadReporte();
+  });
+
+  const financieroForm = (formId, path, onOk) => {
+    document.getElementById(formId).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const payload = Object.fromEntries(new FormData(e.target).entries());
+      try {
+        await api(path, { method: "POST", body: payload });
+        e.target.reset();
+        await onOk();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  };
+  financieroForm("form-new-gasto", "/api/gastos", loadFinanzas);
+  financieroForm("form-new-ingreso", "/api/otros-ingresos", loadFinanzas);
+  financieroForm("form-new-nomina", "/api/nomina", loadFinanzas);
 
   document.getElementById("form-clinic-name").addEventListener("submit", async (e) => {
     e.preventDefault();

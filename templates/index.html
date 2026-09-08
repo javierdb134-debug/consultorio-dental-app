@@ -60,6 +60,7 @@
       <button type="button" class="nav-btn" data-view="citas">Citas</button>
       <button type="button" class="nav-btn" data-view="consultas" id="nav-consultas">Consultas</button>
       <button type="button" class="nav-btn" data-view="insumos">Insumos</button>
+      <button type="button" class="nav-btn" data-view="finanzas" id="nav-finanzas">Finanzas</button>
       <button type="button" class="nav-btn" data-view="settings" id="nav-settings">Configuracion</button>
     </nav>
     <div class="user-box">
@@ -186,6 +187,96 @@
           <tbody id="insumos-tbody"></tbody>
         </table>
         <p id="insumos-empty" class="empty-text hidden">No hay insumos registrados todavia.</p>
+      </div>
+    </section>
+
+    <section id="view-finanzas" class="view hidden">
+      <div class="view-header">
+        <h2>Finanzas</h2>
+      </div>
+
+      <div class="card">
+        <h3>Reporte por periodo</h3>
+        <form id="form-reporte-rango" class="inline-form">
+          <label>Desde
+            <input type="date" id="reporte-desde">
+          </label>
+          <label>Hasta
+            <input type="date" id="reporte-hasta">
+          </label>
+          <button type="submit" class="btn-primary">Actualizar</button>
+        </form>
+
+        <div class="stats-grid" id="reporte-stats"></div>
+      </div>
+
+      <div class="card">
+        <h3>Alertas y proximas citas</h3>
+        <div class="report-columns">
+          <div>
+            <h4>Insumos mas consumidos</h4>
+            <ul id="reporte-top-insumos" class="plain-list"></ul>
+          </div>
+          <div>
+            <h4>Insumos por vencer (30 dias)</h4>
+            <ul id="reporte-por-vencer" class="plain-list"></ul>
+          </div>
+          <div>
+            <h4>Proximas citas</h4>
+            <ul id="reporte-proximas-citas" class="plain-list"></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Gastos</h3>
+        <div class="table-wrap">
+          <table id="table-gastos">
+            <thead><tr><th>Fecha</th><th>Concepto</th><th>Categoria</th><th>Monto</th><th>Acciones</th></tr></thead>
+            <tbody id="gastos-tbody"></tbody>
+          </table>
+        </div>
+        <form id="form-new-gasto" class="inline-form">
+          <label>Fecha<input type="date" name="fecha" required></label>
+          <label>Concepto<input type="text" name="concepto" required></label>
+          <label>Categoria<input type="text" name="categoria"></label>
+          <label>Monto<input type="number" step="any" name="monto" required></label>
+          <button type="submit" class="btn-primary">Agregar gasto</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Otros ingresos</h3>
+        <div class="table-wrap">
+          <table id="table-ingresos">
+            <thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th><th>Acciones</th></tr></thead>
+            <tbody id="ingresos-tbody"></tbody>
+          </table>
+        </div>
+        <form id="form-new-ingreso" class="inline-form">
+          <label>Fecha<input type="date" name="fecha" required></label>
+          <label>Concepto<input type="text" name="concepto" required></label>
+          <label>Monto<input type="number" step="any" name="monto" required></label>
+          <button type="submit" class="btn-primary">Agregar ingreso</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Nomina</h3>
+        <div class="table-wrap">
+          <table id="table-nomina">
+            <thead><tr><th>Fecha</th><th>Persona</th><th>Concepto</th><th>Monto</th><th>Acciones</th></tr></thead>
+            <tbody id="nomina-tbody"></tbody>
+          </table>
+        </div>
+        <form id="form-new-nomina" class="inline-form">
+          <label>Fecha<input type="date" name="fecha" required></label>
+          <label>Persona<input type="text" name="person" list="nomina-personas" required></label>
+          <datalist id="nomina-personas"></datalist>
+          <label>Concepto<input type="text" name="concepto" placeholder="sueldo, comision..."></label>
+          <label>Monto<input type="number" step="any" name="monto" required></label>
+          <button type="submit" class="btn-primary">Agregar pago</button>
+        </form>
       </div>
     </section>
 
