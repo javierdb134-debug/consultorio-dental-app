@@ -278,45 +278,26 @@ tr.row-expiring td:nth-child(5) { color: var(--warning); font-weight: 700; }
 /* ---------- Odontograma ---------- */
 
 .odontograma {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
   margin: 1rem 0;
+  background: #fafcfc;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
 }
 
-.odontograma-row {
-  display: flex;
-  gap: 0.15rem;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-}
+.odontograma-svg { width: 100%; height: auto; display: block; }
 
-.tooth-btn {
-  width: 32px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  padding: 3px 1px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  cursor: pointer;
-}
+.tooth-piece { cursor: pointer; }
+.tooth-piece:hover .tooth-path { stroke: var(--accent); }
+.tooth-piece.selected .tooth-path { stroke: var(--accent-dark); stroke-width: 2.4; }
 
-.tooth-btn:hover { background: var(--bg); }
-.tooth-btn.selected { outline: 2px solid var(--accent-dark); outline-offset: 1px; background: var(--bg); }
-
-.tooth-svg { width: 24px; height: 32px; }
-.tooth-svg.tooth-flipped { transform: rotate(180deg); }
-
-.tooth-path { stroke-width: 1.3; }
+.tooth-path { stroke-width: 1.3; transition: stroke 0.15s; }
 .tooth-path.estado-sano { fill: #ffffff; stroke: var(--border); }
 .tooth-path.estado-tratado { fill: #a9d2f5; stroke: #4a86b4; }
 .tooth-path.estado-a_tratar { fill: #f7cb52; stroke: var(--warning); }
 .tooth-path.estado-ausente { fill: #e9e9e9; stroke: #b8b8b8; stroke-dasharray: 2 1.5; opacity: 0.65; }
 
-.tooth-label { font-size: 0.62rem; font-weight: 700; color: var(--text-dim); margin-top: 1px; }
+.tooth-label { font-size: 11px; font-weight: 700; fill: var(--text-dim); pointer-events: none; }
 
 .tooth-panel {
   border: 1px solid var(--border);

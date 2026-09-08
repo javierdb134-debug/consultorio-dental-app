@@ -35,9 +35,39 @@ const CATEGORIA_SUGERIDAS = [
 
 const TOOTH_PATH = "M12 1C6 1 3 5 3 10c0 4 2 6 3 8 1 3 1 8 2 11 1 2 3 2 4 0 1-3 1-8 2-11 1-2 3-4 3-8 0-5-3-9-9-9z";
 
-function toothIconHtml(estado, flipped) {
-  const flipClass = flipped ? " tooth-flipped" : "";
-  return `<svg viewBox="0 0 24 32" class="tooth-svg${flipClass}"><path d="${TOOTH_PATH}" class="tooth-path estado-${estado}"></path></svg>`;
+// El odontograma se dibuja como un solo ovalo (como una boca de frente): la
+// arcada superior recorre la mitad de arriba de la elipse y la inferior la
+// mitad de abajo, cada diente "mirando" hacia el centro.
+const ODONTOGRAMA_VB = { width: 460, height: 300, cx: 230, cy: 150, rx: 175, ry: 95 };
+
+function toothPlacement(indexInRow, isUpper) {
+  const { cx, cy, rx, ry } = ODONTOGRAMA_VB;
+  const thetaDeg = isUpper ? 200 + (indexInRow / 15) * 140 : 160 - (indexInRow / 15) * 140;
+  const theta = (thetaDeg * Math.PI) / 180;
+  const x = cx + rx * Math.cos(theta);
+  const y = cy + ry * Math.sin(theta);
+  const dx = cx - x;
+  const dy = cy - y;
+  const angle = (Math.atan2(dx, -dy) * 180) / Math.PI;
+  return { x, y, angle, labelX: x + (x - cx) * 0.24, labelY: y + (y - cy) * 0.24 };
+}
+
+function buildOdontogramaSvg(dientes) {
+  const { width, height } = ODONTOGRAMA_VB;
+  let inner = "";
+  FDI_ROWS.forEach((row, rowIndex) => {
+    const isUpper = rowIndex === 0;
+    row.forEach((tooth, i) => {
+      const info = dientes[tooth] || { estado: "sano", nota: null };
+      const { x, y, angle, labelX, labelY } = toothPlacement(i, isUpper);
+      inner += `<g class="tooth-piece" data-tooth="${tooth}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})">`
+        + `<path class="tooth-path estado-${info.estado}" `
+        + `transform="rotate(${angle.toFixed(1)}) scale(0.82) translate(-12 -16)" d="${TOOTH_PATH}"></path></g>`
+        + `<text class="tooth-label" x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" `
+        + `text-anchor="middle" dominant-baseline="middle">${tooth}</text>`;
+    });
+  });
+  return `<svg viewBox="0 0 ${width} ${height}" class="odontograma-svg">${inner}</svg>`;
 }
 
 const FDI_ROWS = [
@@ -325,21 +355,14 @@ async function openPacienteDetail(patientId) {
 
   container.appendChild(el("h3", { text: "Odontograma" }));
   const odontograma = el("div", { class: "odontograma" });
+  odontograma.innerHTML = buildOdontogramaSvg(data.dientes);
   const panelHolder = el("div", {});
-  FDI_ROWS.forEach((row, rowIndex) => {
-    const rowEl = el("div", { class: "odontograma-row" });
-    row.forEach((tooth) => {
+  odontograma.querySelectorAll(".tooth-piece").forEach((piece) => {
+    const tooth = piece.dataset.tooth;
+    piece.addEventListener("click", () => {
       const info = data.dientes[tooth] || { estado: "sano", nota: null };
-      const btn = el("button", {
-        type: "button",
-        class: "tooth-btn",
-        onclick: () => renderToothPanel(panelHolder, patientId, tooth, info, odontograma),
-      });
-      btn.dataset.tooth = tooth;
-      btn.innerHTML = toothIconHtml(info.estado, rowIndex === 0) + `<span class="tooth-label">${tooth}</span>`;
-      rowEl.appendChild(btn);
+      renderToothPanel(panelHolder, patientId, tooth, info, odontograma);
     });
-    odontograma.appendChild(rowEl);
   });
   container.appendChild(odontograma);
   container.appendChild(panelHolder);
@@ -454,8 +477,8 @@ async function renderAdjuntos(patientId, container) {
 }
 
 function renderToothPanel(panelHolder, patientId, tooth, info, odontograma) {
-  odontograma.querySelectorAll(".tooth-btn").forEach((b) => b.classList.remove("selected"));
-  odontograma.querySelector(`[data-tooth="${tooth}"]`).classList.add("selected");
+  odontograma.querySelectorAll(".tooth-piece").forEach((p) => p.classList.remove("selected"));
+  odontograma.querySelector(`.tooth-piece[data-tooth="${tooth}"]`).classList.add("selected");
 
   let estadoActual = info.estado;
 
@@ -491,10 +514,8 @@ function renderToothPanel(panelHolder, patientId, tooth, info, odontograma) {
         });
         info.estado = estadoActual;
         info.nota = notaInput.value;
-        const btnEl = odontograma.querySelector(`[data-tooth="${tooth}"]`);
-        const isUpper = FDI_ROWS[0].includes(tooth);
-        btnEl.innerHTML = toothIconHtml(estadoActual, isUpper) + `<span class="tooth-label">${tooth}</span>`;
-        btnEl.className = "tooth-btn selected";
+        const piece = odontograma.querySelector(`.tooth-piece[data-tooth="${tooth}"]`);
+        piece.querySelector(".tooth-path").setAttribute("class", `tooth-path estado-${estadoActual}`);
       } catch (err) {
         alert(err.message);
       }
